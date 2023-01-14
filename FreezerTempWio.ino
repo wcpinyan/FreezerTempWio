@@ -1,17 +1,113 @@
+
+// mqtt from: https://www.hackster.io/Salmanfarisvp/mqtt-on-wio-terminal-4ea8f8#:~:text=MQTT%20on%20Wio%20Terminal%20Let%27s%20Start%20Introduction%20to,a%20small%20code%20footprint%20and%20minimal%20network%20bandwidth.
+
 //Libraries 
 #include "TFT_eSPI.h" //TFT LCD library 
 #include "DHT.h" // DHT library 
-
+#include <rpcWiFi.h>
+#include <PubSubClient.h>
 
 //Definitions
 #define DHTPIN 0 //Define signal pin of DHT sensor 
 // #define DHTPIN PIN_WIRE_SCL //Use I2C port as Digital Port */
 #define DHTTYPE DHT22 //Define DHT sensor type 
+
+
+
+
+//
 float threshold=77.0;
 //Initializations
 DHT dht(DHTPIN, DHTTYPE); //Initializing DHT sensor
 TFT_eSPI tft; //Initializing TFT LCD
 TFT_eSprite spr = TFT_eSprite(&tft); //Initializing buffer
+
+//WIFI section
+const char* ssid = "Linksys01"; // WiFi Name
+const char* password = "dianne01";  // WiFi Password
+const char* mqtt_server = "broker.mqtt-dashboard.com";  // MQTT Broker URL
+
+WiFiClient wioClient;
+PubSubClient client(wioClient);
+long lastMsg = 0;
+char msg[50];
+int value = 0;
+
+
+void setup_wifi() {
+
+  delay(10);
+
+  tft.setTextSize(2);
+  tft.setCursor((320 - tft.textWidth("Connecting to Wi-Fi..")) / 2, 120);
+  tft.print("Connecting to Wi-Fi..");
+
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password); // Connecting WiFi
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor((320 - tft.textWidth("Connected!")) / 2, 120);
+  tft.print("Connected!");
+
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP()); // Display Local IP Address
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  //tft.fillScreen(TFT_BLACK);
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  char buff_p[length];
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+    buff_p[i] = (char)payload[i];
+  }
+  Serial.println();
+  buff_p[length] = '\0';
+  String msg_p = String(buff_p);
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor((320 - tft.textWidth("MQTT Message")) / 2, 90);
+  tft.print("MQTT Message: " );
+  tft.setCursor((320 - tft.textWidth(msg_p)) / 2, 120);
+  tft.print(msg_p); // Print receved payload
+
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "WioTerminal-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      client.publish("WTout", "hello world");
+      // ... and resubscribe
+      client.subscribe("WTin");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+//**************
 
 String highmsg="";
 bool isTempHigh;
@@ -22,7 +118,11 @@ float ftemp;
 
 void setup() {
   Serial.begin(115200);
-  
+  //****************
+  setup_wifi();
+    client.setServer(mqtt_server, 1883); // Connect the MQTT Server
+    client.setCallback(callback);
+  //*****************
   
   //pinMode(WIO_LIGHT, INPUT); //Set light sensor pin as INPUT
   pinMode(WIO_BUZZER, OUTPUT); //Set buzzer pin as OUTPUT
@@ -36,7 +136,22 @@ void setup() {
 
 void loop() {
   
-  
+  //*************************
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  long now = millis();
+  if (now - lastMsg > 2000) {
+    lastMsg = now;
+    ++value;
+    snprintf (msg, 50, "Wio Terminal #%ld", value);
+    Serial.print("Publish message: ");
+    Serial.println(msg);
+    client.publish("WTout", msg);
+  }
+  //************************
   float t = dht.readTemperature(); //Assign variable to store temperature 
   float h = dht.readHumidity(); //Assign variable to store humidity 
   //int light = analogRead(WIO_LIGHT); //Assign variable to store light sensor values
