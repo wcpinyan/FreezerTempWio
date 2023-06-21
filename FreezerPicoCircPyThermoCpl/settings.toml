@@ -1,0 +1,6 @@
+WIFI_SSID="Linksys01"
+WIFI_PASSWORD="dianne01"
+AIO_USERNAME="wcpinyan"
+AIO_KEY="a70f57564a7c2c56344ef25d30069345dea33605"
+PORT=1883
+BROKER="io.adafruit.com"
